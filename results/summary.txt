@@ -1,0 +1,74 @@
+===== Experiment Summary =====
+
+=== 1. Regularization Comparison ===
+Experiment: no_L2
+Best Epoch      : 30
+Best Val Loss   : 0.069110
+Test Loss       : 0.072989
+Test Accuracy   : 0.977900
+Best Model Path : results/best_model_no_l2.npz
+
+Experiment: with_L2
+Best Epoch      : 25
+Best Val Loss   : 0.070032
+Test Loss       : 0.071701
+Test Accuracy   : 0.978900
+Best Model Path : results/best_model_with_l2.npz
+
+Saved Figures:
+- results/no_l2_loss_curve.png
+- results/no_l2_acc_curve.png
+- results/with_l2_loss_curve.png
+- results/with_l2_acc_curve.png
+- results/loss_compare_l2.png
+- results/acc_compare_l2.png
+- results/confusion_matrix_no_l2.png
+- results/confusion_matrix_with_l2.png
+- results/wrong_cases_no_l2.png
+- results/wrong_cases_with_l2.png
+
+=== 2. Activation Comparison (Gradient Vanishing) ===
+To highlight the influence of activation functions on gradient propagation,
+all activations use the same network depth and Xavier initialization.
+
+Activation: sigmoid
+Best Epoch         : 12
+Best Val Loss      : 0.627083
+Test Loss          : 0.620712
+Test Accuracy      : 0.822800
+Avg Grad By Layer  : [0.10522 , 0.118381, 0.14993 , 0.304991]
+
+Activation: tanh
+Best Epoch         : 12
+Best Val Loss      : 0.129231
+Test Loss          : 0.128160
+Test Accuracy      : 0.961300
+Avg Grad By Layer  : [0.597979, 0.3133  , 0.21979 , 0.141727]
+
+Activation: relu
+Best Epoch         : 12
+Best Val Loss      : 0.091031
+Test Loss          : 0.093912
+Test Accuracy      : 0.971800
+Avg Grad By Layer  : [0.719237, 0.486959, 0.385898, 0.329641]
+
+Activation: leakyrelu
+Best Epoch         : 11
+Best Val Loss      : 0.092498
+Test Loss          : 0.096499
+Test Accuracy      : 0.971400
+Avg Grad By Layer  : [0.729903, 0.480322, 0.381209, 0.342901]
+
+Saved Figures:
+- results/activation_gradient_by_layer.png
+- results/activation_first_layer_gradient.png
+- results/activation_val_loss_compare.png
+- results/activation_val_acc_compare.png
+- results/act_sigmoid_loss_curve.png
+- results/act_sigmoid_acc_curve.png
+- results/act_tanh_loss_curve.png
+- results/act_tanh_acc_curve.png
+- results/act_relu_loss_curve.png
+- results/act_relu_acc_curve.png
+- results/act_leakyrelu_loss_curve.png
+- results/act_leakyrelu_acc_curve.png
