@@ -11,10 +11,6 @@ from utils import (
     plot_curves,
     plot_conf_matrix,
     plot_wrong_cases,
-    mean_grad_norms_from_batches,
-    plot_activation_gradient_comparison,
-    plot_activation_loss_comparison,
-    plot_activation_acc_comparison,
 )
 
 
@@ -50,7 +46,7 @@ def evaluate(model, X, y, y_oh, l2_lambda=0.0, batch_size=256):
 
 def save_model_parameters(model, save_path):
     """
-    保存模型参数到 npz
+    保存模型参数到 npz 文件
     """
     save_dir = os.path.dirname(save_path)
     if save_dir:
@@ -66,7 +62,7 @@ def save_model_parameters(model, save_path):
 
 def load_model_parameters(model, save_path):
     """
-    从 npz 加载模型参数
+    从 npz 文件恢复模型参数
     """
     data = np.load(save_path)
     for i, layer in enumerate(model.layers):
@@ -74,100 +70,32 @@ def load_model_parameters(model, save_path):
         layer.b = data[f"b{i}"]
 
 
-def save_summary_txt(summary_text, save_path="results/summary.txt"):
-    ensure_dir(os.path.dirname(save_path) if os.path.dirname(save_path) else ".")
+def save_summary_txt(summary_text, save_path="results/hparam_summary.txt"):
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        ensure_dir(save_dir)
     with open(save_path, "w", encoding="utf-8") as f:
         f.write(summary_text)
 
 
-def plot_loss_comparison(result_a, result_b, save_path, title):
-    """
-    两组实验的 loss 对比图
-    """
-    ensure_dir(os.path.dirname(save_path) if os.path.dirname(save_path) else ".")
-
-    train_a = result_a["history"]["train_losses"]
-    val_a = result_a["history"]["val_losses"]
-    train_b = result_b["history"]["train_losses"]
-    val_b = result_b["history"]["val_losses"]
-
-    epochs_a = np.arange(1, len(train_a) + 1)
-    epochs_b = np.arange(1, len(train_b) + 1)
-
-    plt.figure(figsize=(9, 5))
-    plt.plot(epochs_a, train_a, label=f"Train Loss ({result_a['exp_name']})", linestyle="--")
-    plt.plot(epochs_a, val_a, label=f"Val Loss ({result_a['exp_name']})")
-    plt.plot(epochs_b, train_b, label=f"Train Loss ({result_b['exp_name']})", linestyle="--")
-    plt.plot(epochs_b, val_b, label=f"Val Loss ({result_b['exp_name']})")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title(title)
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=200)
-    plt.close()
-
-
-def plot_acc_comparison(result_a, result_b, save_path, title):
-    """
-    两组实验的 acc 对比图
-    """
-    ensure_dir(os.path.dirname(save_path) if os.path.dirname(save_path) else ".")
-
-    train_a = result_a["history"]["train_accs"]
-    val_a = result_a["history"]["val_accs"]
-    train_b = result_b["history"]["train_accs"]
-    val_b = result_b["history"]["val_accs"]
-
-    epochs_a = np.arange(1, len(train_a) + 1)
-    epochs_b = np.arange(1, len(train_b) + 1)
-
-    plt.figure(figsize=(9, 5))
-    plt.plot(epochs_a, train_a, label=f"Train Acc ({result_a['exp_name']})", linestyle="--")
-    plt.plot(epochs_a, val_a, label=f"Val Acc ({result_a['exp_name']})")
-    plt.plot(epochs_b, train_b, label=f"Train Acc ({result_b['exp_name']})", linestyle="--")
-    plt.plot(epochs_b, val_b, label=f"Val Acc ({result_b['exp_name']})")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
-    plt.title(title)
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=200)
-    plt.close()
-
-
 def train_one_experiment(
     exp_name,
+    display_name,
+    config,
     X_train, y_train, y_train_oh,
     X_val, y_val, y_val_oh,
-    config,
-    activation=None,
-    weight_init=None,
-    l2_lambda=0.0,
     patience=5,
-    min_delta=1e-4,
-    track_gradients=False,
+    min_delta=1e-4
 ):
     """
     训练单组实验
-
-    参数
-    ----
-    activation: 若为 None，则使用 config["activation"]
-    weight_init: 若为 None，则使用 config["weight_init"]
-    track_gradients: 是否记录每个 epoch 的各层平均梯度范数
     """
-    act = activation if activation is not None else config["activation"]
-    init = weight_init if weight_init is not None else config["weight_init"]
-
     model = MLP(
         input_dim=config["input_dim"],
         hidden_dims=config["hidden_dims"],
         output_dim=config["output_dim"],
-        activation=act,
-        weight_init=init,
+        activation=config["activation"],
+        weight_init=config["weight_init"]
     )
 
     history = {
@@ -177,8 +105,7 @@ def train_one_experiment(
         "val_accs": [],
     }
 
-    gradient_history = []
-
+    best_val_acc = 0.0
     best_val_loss = float("inf")
     best_epoch = -1
     wait = 0
@@ -189,12 +116,14 @@ def train_one_experiment(
     batch_size = config["batch_size"]
     lr = config["lr"]
     epochs = config["epochs"]
+    l2_lambda = config["l2_lambda"]
 
-    print(f"\n===== Start: {exp_name} =====")
+    print(f"\n===== {display_name} =====")
     print(
-        f"activation={act}, weight_init={init}, "
-        f"hidden_dims={config['hidden_dims']}, lr={lr}, "
-        f"batch_size={batch_size}, epochs={epochs}, l2={l2_lambda}"
+        f"hidden_dims={config['hidden_dims']}, "
+        f"activation={config['activation']}, "
+        f"lr={lr}, batch_size={batch_size}, l2={l2_lambda}, "
+        f"weight_init={config['weight_init']}"
     )
 
     for epoch in range(epochs):
@@ -202,11 +131,8 @@ def train_one_experiment(
 
         epoch_loss = 0.0
         num_batches = 0
-
         train_preds = []
         train_true = []
-
-        batch_grad_norms = []
 
         for start in range(0, n_train, batch_size):
             end = start + batch_size
@@ -216,35 +142,31 @@ def train_one_experiment(
             y_batch = y_train[idx]
             y_batch_oh = y_train_oh[idx]
 
-            # forward
+            # 前向传播
             logits = model.forward(X_batch)
 
-            # loss
+            # 损失
             loss = model.compute_loss(logits, y_batch_oh, l2_lambda=l2_lambda)
             epoch_loss += loss
 
-            # 当前 batch 预测
+            # 当前 batch 预测结果
             batch_pred = np.argmax(model.loss_fn.probs, axis=1)
             train_preds.append(batch_pred)
             train_true.append(y_batch)
 
-            # backward
+            # 反向传播与参数更新
             model.backward(l2_lambda=l2_lambda)
-
-            # 记录梯度范数（分析梯度消失/爆炸）
-            if track_gradients:
-                batch_grad_norms.append(model.get_gradient_norms(kind="weight"))
-
-            # update
             model.update(lr)
 
             num_batches += 1
 
+        # 训练集指标
         train_loss = epoch_loss / num_batches
         train_pred = np.concatenate(train_preds)
         train_true_epoch = np.concatenate(train_true)
         train_acc = compute_accuracy(train_pred, train_true_epoch)
 
+        # 验证集指标
         val_loss, val_acc, _ = evaluate(
             model,
             X_val, y_val, y_val_oh,
@@ -257,19 +179,16 @@ def train_one_experiment(
         history["train_accs"].append(train_acc)
         history["val_accs"].append(val_acc)
 
-        if track_gradients:
-            epoch_grad_norm = mean_grad_norms_from_batches(batch_grad_norms)
-            gradient_history.append(epoch_grad_norm)
-
         print(
-            f"[{exp_name}] Epoch {epoch+1:02d}/{epochs} | "
+            f"[{display_name}] Epoch {epoch+1:02d}/{epochs} | "
             f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f} | "
             f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f}"
         )
 
-        # Early Stopping + 保存最佳模型
+        # 以验证损失作为 early stopping 标准，同时记录最佳验证准确率
         if val_loss < best_val_loss - min_delta:
             best_val_loss = val_loss
+            best_val_acc = val_acc
             best_epoch = epoch + 1
             wait = 0
             save_model_parameters(model, best_model_path)
@@ -277,7 +196,7 @@ def train_one_experiment(
             wait += 1
 
         if wait >= patience:
-            print(f"[{exp_name}] Early stopping triggered at epoch {epoch+1}.")
+            print(f"[{display_name}] Early stopping at epoch {epoch+1}.")
             break
 
     # 恢复最佳模型参数
@@ -285,17 +204,115 @@ def train_one_experiment(
 
     result = {
         "exp_name": exp_name,
+        "display_name": display_name,
+        "config": config,
         "model": model,
         "history": history,
+        "best_val_acc": best_val_acc,
         "best_val_loss": best_val_loss,
         "best_epoch": best_epoch,
         "best_model_path": best_model_path,
-        "activation": act,
-        "weight_init": init,
-        "l2_lambda": l2_lambda,
-        "gradient_history": np.array(gradient_history) if track_gradients else None,
     }
     return result
+
+
+def plot_three_mode_val_acc_comparison(results, save_path):
+    """
+    在一张图中比较三组参数设计模式的验证集准确率曲线
+    """
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        ensure_dir(save_dir)
+
+    plt.figure(figsize=(9, 5))
+
+    for result in results:
+        val_accs = result["history"]["val_accs"]
+        epochs = np.arange(1, len(val_accs) + 1)
+        label = f"{result['display_name']} | best={result['best_val_acc']:.4f}"
+        plt.plot(epochs, val_accs, marker="o", label=label)
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Validation Accuracy")
+    plt.title("Validation Accuracy Comparison of Three Hyperparameter Designs")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=200)
+    plt.close()
+
+
+def plot_three_mode_val_loss_comparison(results, save_path):
+    """
+    在一张图中比较三组参数设计模式的验证集损失曲线
+    """
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        ensure_dir(save_dir)
+
+    plt.figure(figsize=(9, 5))
+
+    for result in results:
+        val_losses = result["history"]["val_losses"]
+        epochs = np.arange(1, len(val_losses) + 1)
+        plt.plot(epochs, val_losses, marker="o", label=result["display_name"])
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Validation Loss")
+    plt.title("Validation Loss Comparison of Three Hyperparameter Designs")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=200)
+    plt.close()
+
+
+def plot_overfitting_control_comparison(result_no_l2, result_with_l2, save_path):
+    """
+    用 Baseline 同参数下 no_L2 / with_L2 的训练-验证损失对照，
+    体现 L2 正则化对过拟合的控制效果
+    """
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        ensure_dir(save_dir)
+
+    epochs_no = np.arange(1, len(result_no_l2["history"]["train_losses"]) + 1)
+    epochs_l2 = np.arange(1, len(result_with_l2["history"]["train_losses"]) + 1)
+
+    plt.figure(figsize=(10, 5))
+
+    plt.plot(
+        epochs_no,
+        result_no_l2["history"]["train_losses"],
+        linestyle="--",
+        label="Train Loss (no L2)"
+    )
+    plt.plot(
+        epochs_no,
+        result_no_l2["history"]["val_losses"],
+        label="Val Loss (no L2)"
+    )
+
+    plt.plot(
+        epochs_l2,
+        result_with_l2["history"]["train_losses"],
+        linestyle="--",
+        label="Train Loss (with L2)"
+    )
+    plt.plot(
+        epochs_l2,
+        result_with_l2["history"]["val_losses"],
+        label="Val Loss (with L2)"
+    )
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training/Validation Loss Curves for Overfitting Control")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=200)
+    plt.close()
 
 
 def main():
@@ -303,58 +320,166 @@ def main():
     ensure_dir("results")
 
     # =========================
-    # 1) 加载数据
+    # 1. 加载数据
     # =========================
     X_train, y_train, y_train_oh, X_val, y_val, y_val_oh, X_test, y_test, y_test_oh = load_mnist_data()
 
     # =========================
-    # 2) 正则化对比：no_L2 vs with_L2
+    # 2. 按题目表格设置三组实验
     # =========================
-    reg_config = {
+    experiments = [
+        {
+            "exp_name": "baseline",
+            "display_name": "Baseline",
+            "config": {
+                "input_dim": 784,
+                "hidden_dims": [256, 128],
+                "output_dim": 10,
+                "activation": "relu",
+                "weight_init": "he",
+                "lr": 0.01,
+                "batch_size": 64,
+                "epochs": 25,
+                "l2_lambda": 1e-4,
+            }
+        },
+        {
+            "exp_name": "group1",
+            "display_name": "组1",
+            "config": {
+                "input_dim": 784,
+                "hidden_dims": [512, 256],
+                "output_dim": 10,
+                "activation": "leakyrelu",
+                "weight_init": "he",
+                "lr": 0.005,
+                "batch_size": 128,
+                "epochs": 25,
+                "l2_lambda": 1e-3,
+            }
+        },
+        {
+            "exp_name": "group2",
+            "display_name": "组2",
+            "config": {
+                "input_dim": 784,
+                "hidden_dims": [128],
+                "output_dim": 10,
+                "activation": "tanh",
+                "weight_init": "xavier",
+                "lr": 0.02,
+                "batch_size": 32,
+                "epochs": 25,
+                "l2_lambda": 0.0,
+            }
+        },
+    ]
+
+    # =========================
+    # 3. 依次训练三组实验
+    # =========================
+    all_results = []
+
+    for exp in experiments:
+        result = train_one_experiment(
+            exp_name=exp["exp_name"],
+            display_name=exp["display_name"],
+            config=exp["config"],
+            X_train=X_train, y_train=y_train, y_train_oh=y_train_oh,
+            X_val=X_val, y_val=y_val, y_val_oh=y_val_oh,
+            patience=5,
+            min_delta=1e-4
+        )
+
+        # 保存单组训练/验证曲线
+        plot_curves(
+            result["history"]["train_losses"],
+            result["history"]["val_losses"],
+            result["history"]["train_accs"],
+            result["history"]["val_accs"],
+            save_dir="results",
+            prefix=exp["exp_name"]
+        )
+
+        # 测试集评估
+        test_loss, test_acc, _ = evaluate(
+            result["model"],
+            X_test, y_test, y_test_oh,
+            l2_lambda=exp["config"]["l2_lambda"]
+        )
+
+        result["test_loss"] = test_loss
+        result["test_acc"] = test_acc
+        all_results.append(result)
+
+    # =========================
+    # 4. 在一张图中比较三种参数设计模式
+    # =========================
+    plot_three_mode_val_acc_comparison(
+        all_results,
+        save_path="results/three_mode_val_acc_compare.png"
+    )
+
+    plot_three_mode_val_loss_comparison(
+        all_results,
+        save_path="results/three_mode_val_loss_compare.png"
+    )
+
+    # =========================
+    # 5. 过拟合控制：Baseline 同参数下 no_L2 vs with_L2
+    # =========================
+    baseline_no_l2_config = {
         "input_dim": 784,
         "hidden_dims": [256, 128],
         "output_dim": 10,
         "activation": "relu",
         "weight_init": "he",
-        "lr": 0.08,
-        "batch_size": 128,
-        "epochs": 30,
+        "lr": 0.01,
+        "batch_size": 64,
+        "epochs": 25,
+        "l2_lambda": 0.0,
+    }
+
+    baseline_with_l2_config = {
+        "input_dim": 784,
+        "hidden_dims": [256, 128],
+        "output_dim": 10,
+        "activation": "relu",
+        "weight_init": "he",
+        "lr": 0.01,
+        "batch_size": 64,
+        "epochs": 25,
+        "l2_lambda": 1e-4,
     }
 
     result_no_l2 = train_one_experiment(
-        exp_name="no_l2",
+        exp_name="baseline_no_l2",
+        display_name="Baseline-no_L2",
+        config=baseline_no_l2_config,
         X_train=X_train, y_train=y_train, y_train_oh=y_train_oh,
         X_val=X_val, y_val=y_val, y_val_oh=y_val_oh,
-        config=reg_config,
-        activation="relu",
-        weight_init="he",
-        l2_lambda=0.0,
         patience=5,
-        min_delta=1e-4,
-        track_gradients=False,
+        min_delta=1e-4
     )
 
     result_with_l2 = train_one_experiment(
-        exp_name="with_l2",
+        exp_name="baseline_with_l2",
+        display_name="Baseline-with_L2",
+        config=baseline_with_l2_config,
         X_train=X_train, y_train=y_train, y_train_oh=y_train_oh,
         X_val=X_val, y_val=y_val, y_val_oh=y_val_oh,
-        config=reg_config,
-        activation="relu",
-        weight_init="he",
-        l2_lambda=1e-4,
         patience=5,
-        min_delta=1e-4,
-        track_gradients=False,
+        min_delta=1e-4
     )
 
-    # 单组曲线
+    # 单独保存两组的 train/val 曲线
     plot_curves(
         result_no_l2["history"]["train_losses"],
         result_no_l2["history"]["val_losses"],
         result_no_l2["history"]["train_accs"],
         result_no_l2["history"]["val_accs"],
         save_dir="results",
-        prefix="no_l2"
+        prefix="baseline_no_l2"
     )
 
     plot_curves(
@@ -363,211 +488,98 @@ def main():
         result_with_l2["history"]["train_accs"],
         result_with_l2["history"]["val_accs"],
         save_dir="results",
-        prefix="with_l2"
+        prefix="baseline_with_l2"
     )
 
-    # 对比曲线
-    plot_loss_comparison(
+    # 一张图体现过拟合控制
+    plot_overfitting_control_comparison(
         result_no_l2,
         result_with_l2,
-        save_path="results/loss_compare_l2.png",
-        title="Loss Curves: no_L2 vs with_L2"
+        save_path="results/overfitting_control_loss_compare.png"
     )
 
-    plot_acc_comparison(
-        result_no_l2,
-        result_with_l2,
-        save_path="results/acc_compare_l2.png",
-        title="Accuracy Curves: no_L2 vs with_L2"
-    )
+    # =========================
+    # 6. 选三组参数设计模式中“验证集最佳”的模型，做混淆矩阵和错误案例可视化
+    # =========================
+    best_result = max(all_results, key=lambda x: x["best_val_acc"])
+    best_l2 = best_result["config"]["l2_lambda"]
 
-    # 测试集评估
-    test_loss_no_l2, test_acc_no_l2, y_pred_no_l2 = evaluate(
-        result_no_l2["model"], X_test, y_test, y_test_oh, l2_lambda=0.0
-    )
-    test_loss_with_l2, test_acc_with_l2, y_pred_with_l2 = evaluate(
-        result_with_l2["model"], X_test, y_test, y_test_oh, l2_lambda=1e-4
-    )
-
-    # 混淆矩阵
-    plot_conf_matrix(
-        y_true=y_test,
-        y_pred=y_pred_no_l2,
-        save_path="results/confusion_matrix_no_l2.png",
-        title="Confusion Matrix (no L2)"
+    best_test_loss, best_test_acc, best_y_pred = evaluate(
+        best_result["model"],
+        X_test, y_test, y_test_oh,
+        l2_lambda=best_l2
     )
 
     plot_conf_matrix(
         y_true=y_test,
-        y_pred=y_pred_with_l2,
-        save_path="results/confusion_matrix_with_l2.png",
-        title="Confusion Matrix (with L2)"
-    )
-
-    # 错分样本
-    plot_wrong_cases(
-        X=X_test,
-        y_true=y_test,
-        y_pred=y_pred_no_l2,
-        save_path="results/wrong_cases_no_l2.png",
-        num_show=16,
-        title="Wrong Cases (no L2)"
+        y_pred=best_y_pred,
+        save_path="results/confusion_matrix_best.png",
+        title=f"Confusion Matrix ({best_result['display_name']})"
     )
 
     plot_wrong_cases(
         X=X_test,
         y_true=y_test,
-        y_pred=y_pred_with_l2,
-        save_path="results/wrong_cases_with_l2.png",
+        y_pred=best_y_pred,
+        save_path="results/wrong_cases_best.png",
         num_show=16,
-        title="Wrong Cases (with L2)"
+        title=f"Wrong Cases ({best_result['display_name']})"
     )
 
     # =========================
-    # 3) 激活函数对梯度消失的影响比较
-    # =========================
-    # 为了更明显观察梯度传播差异，这里使用更深一点的 MLP
-    # 并统一使用 Xavier 初始化，以便突出“激活函数本身”的影响
-    act_config = {
-        "input_dim": 784,
-        "hidden_dims": [256, 128, 64],
-        "output_dim": 10,
-        "activation": "relu",      # 这里只是占位，实际会在循环中覆盖
-        "weight_init": "xavier",   # 统一初始化，便于公平比较
-        "lr": 0.05,
-        "batch_size": 128,
-        "epochs": 12,
-    }
-
-    activation_list = ["sigmoid", "tanh", "relu", "leakyrelu"]
-    activation_results = {}
-    activation_grad_history = {}
-    activation_test_metrics = {}
-
-    for act_name in activation_list:
-        result_act = train_one_experiment(
-            exp_name=f"act_{act_name}",
-            X_train=X_train, y_train=y_train, y_train_oh=y_train_oh,
-            X_val=X_val, y_val=y_val, y_val_oh=y_val_oh,
-            config=act_config,
-            activation=act_name,
-            weight_init="xavier",
-            l2_lambda=0.0,
-            patience=4,
-            min_delta=1e-4,
-            track_gradients=True,
-        )
-
-        activation_results[act_name] = {
-            "val_losses": result_act["history"]["val_losses"],
-            "val_accs": result_act["history"]["val_accs"],
-        }
-        activation_grad_history[act_name] = result_act["gradient_history"]
-
-        test_loss_act, test_acc_act, _ = evaluate(
-            result_act["model"], X_test, y_test, y_test_oh, l2_lambda=0.0
-        )
-        activation_test_metrics[act_name] = {
-            "test_loss": test_loss_act,
-            "test_acc": test_acc_act,
-            "best_epoch": result_act["best_epoch"],
-            "best_val_loss": result_act["best_val_loss"],
-        }
-
-        # 单组曲线也保存下来
-        plot_curves(
-            result_act["history"]["train_losses"],
-            result_act["history"]["val_losses"],
-            result_act["history"]["train_accs"],
-            result_act["history"]["val_accs"],
-            save_dir="results",
-            prefix=f"act_{act_name}"
-        )
-
-    # 画激活函数对比图
-    plot_activation_gradient_comparison(
-        activation_grad_history,
-        save_dir="results",
-        log_scale=True
-    )
-
-    plot_activation_loss_comparison(
-        activation_results,
-        save_dir="results"
-    )
-
-    plot_activation_acc_comparison(
-        activation_results,
-        save_dir="results"
-    )
-
-    # =========================
-    # 4) 结果汇总 summary.txt
+    # 7. 输出实验汇总
     # =========================
     summary = []
-    summary.append("===== Experiment Summary =====\n")
+    summary.append("===== Hyperparameter Tuning Experiments =====\n")
+    summary.append("实验组 | 隐藏层结构 | 激活函数 | 学习率 | Batch Size | L2系数 | 最佳验证集准确率 | 测试集准确率")
+    summary.append("-" * 120)
 
-    summary.append("=== 1. Regularization Comparison ===")
-    summary.append("Experiment: no_L2")
-    summary.append(f"Best Epoch      : {result_no_l2['best_epoch']}")
-    summary.append(f"Best Val Loss   : {result_no_l2['best_val_loss']:.6f}")
-    summary.append(f"Test Loss       : {test_loss_no_l2:.6f}")
-    summary.append(f"Test Accuracy   : {test_acc_no_l2:.6f}")
-    summary.append(f"Best Model Path : {result_no_l2['best_model_path']}\n")
+    for result in all_results:
+        cfg = result["config"]
+        summary.append(
+            f"{result['display_name']} | "
+            f"{cfg['hidden_dims']} | "
+            f"{cfg['activation']} | "
+            f"{cfg['lr']} | "
+            f"{cfg['batch_size']} | "
+            f"{cfg['l2_lambda']} | "
+            f"{result['best_val_acc']:.4f} | "
+            f"{result['test_acc']:.4f}"
+        )
 
-    summary.append("Experiment: with_L2")
-    summary.append(f"Best Epoch      : {result_with_l2['best_epoch']}")
-    summary.append(f"Best Val Loss   : {result_with_l2['best_val_loss']:.6f}")
-    summary.append(f"Test Loss       : {test_loss_with_l2:.6f}")
-    summary.append(f"Test Accuracy   : {test_acc_with_l2:.6f}")
-    summary.append(f"Best Model Path : {result_with_l2['best_model_path']}\n")
+    summary.append("\n=== Overfitting Control (Baseline no_L2 vs with_L2) ===")
+    summary.append(
+        f"Baseline-no_L2   | best_val_acc={result_no_l2['best_val_acc']:.4f} | best_val_loss={result_no_l2['best_val_loss']:.4f}"
+    )
+    summary.append(
+        f"Baseline-with_L2 | best_val_acc={result_with_l2['best_val_acc']:.4f} | best_val_loss={result_with_l2['best_val_loss']:.4f}"
+    )
 
-    summary.append("Saved Figures:")
-    summary.append("- results/no_l2_loss_curve.png")
-    summary.append("- results/no_l2_acc_curve.png")
-    summary.append("- results/with_l2_loss_curve.png")
-    summary.append("- results/with_l2_acc_curve.png")
-    summary.append("- results/loss_compare_l2.png")
-    summary.append("- results/acc_compare_l2.png")
-    summary.append("- results/confusion_matrix_no_l2.png")
-    summary.append("- results/confusion_matrix_with_l2.png")
-    summary.append("- results/wrong_cases_no_l2.png")
-    summary.append("- results/wrong_cases_with_l2.png\n")
+    summary.append("\n=== Confusion Matrix & Wrong Cases ===")
+    summary.append(f"Best hyperparameter design: {best_result['display_name']}")
+    summary.append(f"Best model test loss      : {best_test_loss:.4f}")
+    summary.append(f"Best model test accuracy  : {best_test_acc:.4f}")
 
-    summary.append("=== 2. Activation Comparison (Gradient Vanishing) ===")
-    summary.append("To highlight the influence of activation functions on gradient propagation,")
-    summary.append("all activations use the same network depth and Xavier initialization.\n")
-
-    for act_name in activation_list:
-        metrics = activation_test_metrics[act_name]
-        grad_hist = activation_grad_history[act_name]
-
-        if grad_hist is not None and len(grad_hist) > 0:
-            avg_grad_by_layer = np.mean(grad_hist, axis=0)
-            grad_str = np.array2string(avg_grad_by_layer, precision=6, separator=", ")
-        else:
-            grad_str = "None"
-
-        summary.append(f"Activation: {act_name}")
-        summary.append(f"Best Epoch         : {metrics['best_epoch']}")
-        summary.append(f"Best Val Loss      : {metrics['best_val_loss']:.6f}")
-        summary.append(f"Test Loss          : {metrics['test_loss']:.6f}")
-        summary.append(f"Test Accuracy      : {metrics['test_acc']:.6f}")
-        summary.append(f"Avg Grad By Layer  : {grad_str}")
-        summary.append("")
-
-    summary.append("Saved Figures:")
-    summary.append("- results/activation_gradient_by_layer.png")
-    summary.append("- results/activation_first_layer_gradient.png")
-    summary.append("- results/activation_val_loss_compare.png")
-    summary.append("- results/activation_val_acc_compare.png")
-    for act_name in activation_list:
-        summary.append(f"- results/act_{act_name}_loss_curve.png")
-        summary.append(f"- results/act_{act_name}_acc_curve.png")
+    summary.append("\nSaved Figures:")
+    summary.append("- results/three_mode_val_acc_compare.png")
+    summary.append("- results/three_mode_val_loss_compare.png")
+    summary.append("- results/baseline_loss_curve.png")
+    summary.append("- results/baseline_acc_curve.png")
+    summary.append("- results/group1_loss_curve.png")
+    summary.append("- results/group1_acc_curve.png")
+    summary.append("- results/group2_loss_curve.png")
+    summary.append("- results/group2_acc_curve.png")
+    summary.append("- results/baseline_no_l2_loss_curve.png")
+    summary.append("- results/baseline_no_l2_acc_curve.png")
+    summary.append("- results/baseline_with_l2_loss_curve.png")
+    summary.append("- results/baseline_with_l2_acc_curve.png")
+    summary.append("- results/overfitting_control_loss_compare.png")
+    summary.append("- results/confusion_matrix_best.png")
+    summary.append("- results/wrong_cases_best.png")
 
     summary_text = "\n".join(summary)
     print("\n" + summary_text)
-    save_summary_txt(summary_text, save_path="results/summary.txt")
+    save_summary_txt(summary_text, save_path="results/hparam_summary.txt")
 
 
 if __name__ == "__main__":

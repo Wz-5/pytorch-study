@@ -1,0 +1,33 @@
+===== Hyperparameter Tuning Experiments =====
+
+实验组 | 隐藏层结构 | 激活函数 | 学习率 | Batch Size | L2系数 | 最佳验证集准确率 | 测试集准确率
+------------------------------------------------------------------------------------------------------------------------
+Baseline | [256, 128] | relu | 0.01 | 64 | 0.0001 | 0.9659 | 0.9669
+组1 | [512, 256] | leakyrelu | 0.005 | 128 | 0.001 | 0.9410 | 0.9400
+组2 | [128] | tanh | 0.02 | 32 | 0.0 | 0.9702 | 0.9683
+
+=== Overfitting Control (Baseline no_L2 vs with_L2) ===
+Baseline-no_L2   | best_val_acc=0.9691 | best_val_loss=0.1049
+Baseline-with_L2 | best_val_acc=0.9669 | best_val_loss=0.1106
+
+=== Confusion Matrix & Wrong Cases ===
+Best hyperparameter design: 组2
+Best model test loss      : 0.1085
+Best model test accuracy  : 0.9683
+
+Saved Figures:
+- results/three_mode_val_acc_compare.png
+- results/three_mode_val_loss_compare.png
+- results/baseline_loss_curve.png
+- results/baseline_acc_curve.png
+- results/group1_loss_curve.png
+- results/group1_acc_curve.png
+- results/group2_loss_curve.png
+- results/group2_acc_curve.png
+- results/baseline_no_l2_loss_curve.png
+- results/baseline_no_l2_acc_curve.png
+- results/baseline_with_l2_loss_curve.png
+- results/baseline_with_l2_acc_curve.png
+- results/overfitting_control_loss_compare.png
+- results/confusion_matrix_best.png
+- results/wrong_cases_best.png
